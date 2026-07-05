@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>コンディション管理 - 選手画面</title>
+    <style>
+        /* ==========================================
+           デザイン（CSS） - スマホ対応・レスポンシブ
+           ========================================== */
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background-color: #3b82f6; /* 選手用は明るい青 */
+            color: white;
+            padding: 15px 20px;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .card {
+            background-color: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1e3a8a;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+            margin-top: 0;
+        }
+        .form-group { margin-bottom: 15px; }
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: bold;
+            color: #4b5563;
+            margin-bottom: 5px;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 16px;
+            background-color: #f9fafb;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+            background-color: white;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        textarea { resize: vertical; }
+        
+        /* 自動計算エリア */
+        .result-box {
+            background-color: #eff6ff;
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+        }
+        .result-label { font-size: 14px; font-weight: bold; color: #1e40af; }
+        .result-value { font-size: 20px; font-weight: bold; color: #1d4ed8; text-align: right; }
+        .result-sub { font-size: 12px; color: #3b82f6; display: block; }
+        
+        /* 保存ボタン */
+        .submit-btn {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 15px;
+            width: 100%;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);
+            margin-bottom: 40px;
+            transition: background-color 0.2s;
+        }
+        .submit-btn:hover { background-color: #1d4ed8; }
+        .submit-btn:disabled { background-color: #9ca3af; cursor: not-allowed; box-shadow: none; }
+
+        /* 接続状態を示すバッジ */
+        .status-badge { font-size: 12px; padding: 4px 8px; border-radius: 12px; font-weight: normal; margin-left: 10px; vertical-align: middle; }
+        .status-local { background-color: #6b7280; color: white; }
+        .status-connecting { background-color: #d97706; color: white; }
+        .status-cloud { background-color: #10b981; color: white; }
+        .status-error { background-color: #dc2626; color: white; }
+
+        /* エラー原因をリアルタイム表示するデバッグパネル */
+        .debug-panel {
+            background-color: #1e293b;
+            color: #38bdf8;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            margin-bottom: 40px;
+            border-left: 4px solid #f43f5e;
+            display: none; /* 通常時は隠し、エラー時のみ自動表示します */
+        }
+        .debug-title {
+            font-weight: bold;
+            color: #f43f5e;
+            margin-bottom: 5px;
+            font-size: 13px;
+        }
+        .debug-tip {
+            margin-top: 10px;
+            color: #94a3b8;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        Team Condition <span id="connection-status" class="status-badge status-local">ローカルモード</span>
+    </header>
+
+    <div class="container">
+        <form id="condition-form">
+            
+            <!-- 【1】 基本情報 -->
+            <div class="card">
+                <h2 class="section-title">基本情報</h2>
+                <div class="form-group">
+                    <label for="player-name">選手名 <span style="color:red;">*</span></label>
+                    <input type="text" id="player-name" placeholder="例: 山田 太郎" required>
+                </div>
+                <div class="form-group">
+                    <label for="date">日付 <span style="color:red;">*</span></label>
+                    <input type="date" id="date" required>
+                </div>
+            </div>
+
+            <!-- 【2】 コンディション -->
+            <div class="card">
+                <h2 class="section-title">コンディション</h2>
+                <div class="form-group">
+                    <label for="fatigue">疲労度 (1:絶好調 〜 10:ヘトヘト)</label>
+                    <input type="number" id="fatigue" min="1" max="10" placeholder="例: 7">
+                </div>
+                <div class="form-group">
+                    <label for="sleep">睡眠時間 (時間)</label>
+                    <input type="number" id="sleep" step="0.5" placeholder="例: 7.5">
+                </div>
+                <div class="form-group">
+                    <label for="injury">ケガ・違和感</label>
+                    <textarea id="injury" rows="2" placeholder="気になる部分があれば記入..."></textarea>
+                </div>
+            </div>
+
+            <!-- 【3】 トレーニング負荷 (sRPE) -->
+            <div class="card">
+                <h2 class="section-title">トレーニング負荷 (sRPE)</h2>
+                <div class="form-group">
+                    <label for="duration">運動時間 (分)</label>
+                    <input type="number" id="duration" placeholder="例: 120">
+                </div>
+                <div class="form-group">
+                    <label for="rpe">RPE: 主観的きつさ (0:楽 〜 10:限界)</label>
+                    <input type="number" id="rpe" min="0" max="10" step="0.1" placeholder="例: 8">
+                </div>
+                <div class="result-box">
+                    <span class="result-label">Training Load</span>
+                    <span class="result-value" id="load-result">-</span>
+                </div>
+            </div>
+
+            <!-- 【4】 反応筋力 (RSI) -->
+            <div class="card">
+                <h2 class="section-title">反応筋力 (RSI)</h2>
+                <div class="form-group">
+                    <label for="jump-height">Jump Height (cm)</label>
+                    <input type="number" id="jump-height" step="0.1" placeholder="例: 40.5">
+                </div>
+                <div class="form-group">
+                    <label for="contact-time">Contact Time (秒)</label>
+                    <input type="number" id="contact-time" step="0.001" placeholder="例: 0.180">
+                </div>
+                <div class="result-box">
+                    <span class="result-label">RSI</span>
+                    <span class="result-value" id="rsi-result">-</span>
+                </div>
+            </div>
+
+            <!-- 【5】 F-v 簡易診断 -->
+            <div class="card">
+                <h2 class="section-title">F-v 簡易診断 (弱点分析)</h2>
+                <p style="font-size:12px; color:#6b7280; margin-top:0;">30mスタートと最高速区間(Fly20m)のタイム比率から判定します。</p>
+                <div class="form-group">
+                    <label for="time-30m">30m ブロックスタート タイム (秒)</label>
+                    <input type="number" id="time-30m" step="0.01" placeholder="例: 4.25">
+                </div>
+                <div class="form-group">
+                    <label for="time-fly20m">Fly-in 20m タイム (秒)</label>
+                    <input type="number" id="time-fly20m" step="0.01" placeholder="例: 2.05">
+                </div>
+                <div class="result-box">
+                    <span class="result-label">診断結果</span>
+                    <div style="text-align: right;">
+                        <span class="result-value" id="fv-result">-</span>
+                        <span class="result-sub" id="fv-ratio"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 【6】 練習の振り返り -->
+            <div class="card">
+                <h2 class="section-title">練習の振り返り</h2>
+                <div class="form-group">
+                    <label for="menu">練習メニュー</label>
+                    <textarea id="menu" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="thoughts">全体の感想</label>
+                    <textarea id="thoughts" rows="2"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="good" style="color: #059669;">👍 できたこと・良かった点</label>
+                    <textarea id="good" rows="2" style="border-color:#34d399; background-color:#ecfdf5;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="bad" style="color: #dc2626;">🔥 できなかったこと・課題</label>
+                    <textarea id="bad" rows="2" style="border-color:#f87171; background-color:#fef2f2;"></textarea>
+                </div>
+            </div>
+
+            <button type="submit" id="save-btn" class="submit-btn">記録を保存する</button>
+        </form>
+
+        <!-- エラー原因をリアルタイム表示するデバッグパネル -->
+        <div id="debug-panel" class="debug-panel">
+            <div class="debug-title">⚠️ Firebase 接続エラーを検出しました</div>
+            <div id="debug-message">読み込み中...</div>
+            <div class="debug-tip">
+                <b>【解決のためのチェックリスト】</b><br>
+                1. 貼り付けた暗号（myFirebaseConfig）に <code>apiKey</code> や <code>projectId</code> が正しく入力されていますか？<br>
+                2. Firebaseコンソールで「Authentication（認証）」を開き、<b>「匿名 (Anonymous)」サインインプロバイダを「有効」</b>に設定しましたか？（※これを忘れると接続エラーになります）<br>
+                3. パソコンがインターネットに繋がっていることを確認してください。
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         動作・通信プログラム（JavaScript）
+         ========================================== -->
+    <!-- ダブルクリックでも確実に外部プログラムが読み込める「クラシック接続ライブラリ」を導入 -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <script>
+        // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+        // ⭐️【最重要】ここにFirebaseの設定を貼り付けます ⭐️
+        // (管理者画面 admin.html に貼ったものと全く同じ暗号にしてください)
+        // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+        const myFirebaseConfig = {
+    apiKey: "AIzaSyAQoESOlZIGJfOgfIwpkL0r0YcYu4tl8ZQ",
+    authDomain: "team-conditioning-controling.firebaseapp.com",
+    projectId: "team-conditioning-controling",
+    storageBucket: "team-conditioning-controling.firebasestorage.app",
+    messagingSenderId: "330203393971",
+    appId: "1:330203393971:web:f47b8e66137d0fce8b65c6",
+    measurementId: "G-SCMMTXKZ37"
+  };
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        let db = null;
+        let colRef = null;
+
+        // Firebaseの接続準備（ダブルクリック対応版）
+        async function initFirebase() {
+            const statusBadge = document.getElementById('connection-status');
+            const debugPanel = document.getElementById('debug-panel');
+            const debugMessage = document.getElementById('debug-message');
+
+            try {
+                let config = null;
+                let isPreview = false;
+
+                // プレビュー環境でのテスト用
+                if (typeof __firebase_config !== 'undefined') {
+                    config = JSON.parse(__firebase_config);
+                    isPreview = true;
+                } else if (myFirebaseConfig.apiKey !== "API_KEY") {
+                    config = myFirebaseConfig;
+                }
+
+                if (config) {
+                    // 接続開始のステータスに変更
+                    statusBadge.textContent = '接続中... 🟡';
+                    statusBadge.className = 'status-badge status-connecting';
+
+                    // クラシック版の初期化
+                    firebase.initializeApp(config);
+                    db = firebase.firestore();
+                    const auth = firebase.auth();
+
+                    // セキュリティ用のログイン（匿名ログイン）を実行
+                    // ※匿名認証が有効になっていない場合、ここでcatchブロックへジャンプします
+                    await auth.signInAnonymously();
+
+                    if (isPreview) {
+                        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default';
+                        colRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('team_condition_logs');
+                    } else {
+                        colRef = db.collection('team_condition_logs');
+                    }
+
+                    // バッジを「クラウド同期中」に変える
+                    statusBadge.textContent = 'クラウド同期中';
+                    statusBadge.className = 'status-badge status-cloud';
+                    debugPanel.style.display = 'none'; // 成功した場合はデバッグパネルを隠す
+                } else {
+                    console.log("Firebase未設定のため、ローカルモードで起動します。");
+                }
+            } catch (error) {
+                console.error("Firebaseの接続中にエラーが発生しました:", error);
+                
+                // エラーが発生したらバッジを赤にする
+                statusBadge.textContent = '接続エラー 🔴';
+                statusBadge.className = 'status-badge status-error';
+                
+                // 画面上にエラーメッセージを表示して自己解決を助ける
+                debugPanel.style.display = 'block';
+                debugMessage.innerHTML = `
+                    <b>エラーコード:</b> ${error.code || 'なし'}<br>
+                    <b>エラー原因:</b> ${error.message}<br>
+                `;
+            }
+        }
+
+        // 起動時に接続する
+        initFirebase();
+
+        // --- 自動計算ロジック（選手が入力した瞬間に動く部分） ---
+        document.addEventListener('DOMContentLoaded', function() {
+            const dateInput = document.getElementById('date');
+            dateInput.valueAsDate = new Date();
+
+            const durationInput = document.getElementById('duration');
+            const rpeInput = document.getElementById('rpe');
+            const loadResult = document.getElementById('load-result');
+            const jumpHeightInput = document.getElementById('jump-height');
+            const contactTimeInput = document.getElementById('contact-time');
+            const rsiResult = document.getElementById('rsi-result');
+            const time30mInput = document.getElementById('time-30m');
+            const timeFly20mInput = document.getElementById('time-fly20m');
+            const fvResult = document.getElementById('fv-result');
+            const fvRatioSub = document.getElementById('fv-ratio');
+
+            function calculateLoad() {
+                const duration = parseFloat(durationInput.value) || 0;
+                const rpe = parseFloat(rpeInput.value) || 0;
+                if (duration > 0 && rpe > 0) loadResult.textContent = (duration * rpe).toFixed(1);
+                else loadResult.textContent = '-';
+            }
+
+            function calculateRsi() {
+                const height = parseFloat(jumpHeightInput.value) || 0;
+                const contact = parseFloat(contactTimeInput.value) || 0;
+                if (height > 0 && contact > 0) rsiResult.textContent = (height / contact).toFixed(2);
+                else rsiResult.textContent = '-';
+            }
+
+            function calculateFv() {
+                const t30m = parseFloat(time30mInput.value) || 0;
+                const tFly20 = parseFloat(timeFly20mInput.value) || 0;
+                if (t30m > 0 && tFly20 > 0) {
+                    const ratio = t30m / tFly20;
+                    let typeText = "バランス型";
+                    if (ratio >= 2.15) { typeText = "力不足型 (Force Deficit)"; fvResult.style.color = "#ea580c"; }
+                    else if (ratio <= 1.95) { typeText = "速度不足型 (Velocity Deficit)"; fvResult.style.color = "#ea580c"; }
+                    else { typeText = "バランス型 (最適)"; fvResult.style.color = "#16a34a"; }
+                    fvResult.textContent = typeText;
+                    fvRatioSub.textContent = `(比率: ${ratio.toFixed(2)})`;
+                } else {
+                    fvResult.textContent = '-';
+                    fvRatioSub.textContent = '';
+                    fvResult.style.color = "#1d4ed8";
+                }
+            }
+
+            durationInput.addEventListener('input', calculateLoad);
+            rpeInput.addEventListener('input', calculateLoad);
+            jumpHeightInput.addEventListener('input', calculateRsi);
+            contactTimeInput.addEventListener('input', calculateRsi);
+            time30mInput.addEventListener('input', calculateFv);
+            timeFly20mInput.addEventListener('input', calculateFv);
+
+            // --- 保存ボタンが押された時の送信処理 ---
+            const form = document.getElementById('condition-form');
+            form.addEventListener('submit', async function(event) {
+                event.preventDefault(); // 画面のリロードを防ぐ
+                
+                const btn = document.getElementById('save-btn');
+                btn.textContent = 'クラウドへ送信中...';
+                btn.disabled = true;
+                
+                const logData = {
+                    playerName: document.getElementById('player-name').value,
+                    date: document.getElementById('date').value,
+                    fatigue: document.getElementById('fatigue').value,
+                    sleep: document.getElementById('sleep').value,
+                    injury: document.getElementById('injury').value,
+                    duration: document.getElementById('duration').value,
+                    rpe: document.getElementById('rpe').value,
+                    trainingLoad: loadResult.textContent,
+                    jumpHeight: document.getElementById('jump-height').value,
+                    contactTime: document.getElementById('contact-time').value,
+                    rsi: rsiResult.textContent,
+                    fvResult: fvResult.textContent,
+                    menu: document.getElementById('menu').value,
+                    thoughts: document.getElementById('thoughts').value,
+                    good: document.getElementById('good').value,
+                    bad: document.getElementById('bad').value,
+                    createdAt: new Date().toISOString()
+                };
+
+                try {
+                    if (colRef) {
+                        // Firebaseのコレクションに追加する（クラシック版の書き方）
+                        await colRef.add(logData);
+                    } else {
+                        // ローカル保存
+                        let savedLogs = JSON.parse(localStorage.getItem('team_condition_logs') || '[]');
+                        savedLogs.push(logData);
+                        localStorage.setItem('team_condition_logs', JSON.stringify(savedLogs));
+                    }
+
+                    alert('お疲れ様です！データを保存しました。');
+                    
+                    const savedName = document.getElementById('player-name').value;
+                    const savedDate = document.getElementById('date').value;
+                    form.reset();
+                    document.getElementById('player-name').value = savedName;
+                    document.getElementById('date').value = savedDate;
+                    
+                    calculateLoad(); calculateRsi(); calculateFv();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                } catch (error) {
+                    console.error("データの保存中にエラーが発生しました:", error);
+                    alert("保存に失敗しました。インターネット接続を確認するか、設定を見直してください。");
+                } finally {
+                    btn.textContent = '記録を保存する';
+                    btn.disabled = false;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
